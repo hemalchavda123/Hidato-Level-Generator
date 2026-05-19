@@ -282,3 +282,59 @@ bool matchesStatisticalProfile(const vector<vector<int>>& puzzle, Difficulty tar
 
     return false;
 }
+
+puzzleResult generateTargetedHidato(int N, Difficulty target) 
+{
+   
+    if(!puzzleBank[N][target].empty()) 
+    {
+        puzzleResult cachedPuzzle = puzzleBank[N][target].back();
+        puzzleBank[N][target].pop_back();
+
+        return cachedPuzzle;
+    }
+
+    int attempts = 0;
+
+    while(true)
+    {
+        attempts++;
+
+        vector<vector<int>> grid = generateEmptyGrid(N, target);
+        int finalHeight = grid.size();
+        int finalWidth = grid[0].size();
+
+        int startR, startC;
+        do
+        {
+            startR = uniform_int_distribution<int>(0, finalHeight - 1)(rng);
+            startC = uniform_int_distribution<int>(0, finalWidth - 1)(rng);
+        } 
+        while (grid[startR][startC] != 0);
+
+        if (!generatePath(startR, startC, 1, N, grid)) continue;
+
+        vector<vector<int>> puzzleGrid = pruneToUniqueMinimal(grid, N);
+
+        Difficulty generatedDifficulty;
+        if (matchesStatisticalProfile(puzzleGrid, EASY, N)) generatedDifficulty = EASY;
+        else if (matchesStatisticalProfile(puzzleGrid, MEDIUM, N)) generatedDifficulty = MEDIUM;
+        else if (matchesStatisticalProfile(puzzleGrid, HARD, N)) generatedDifficulty = HARD;
+        else continue;
+
+        puzzleResult result = 
+        {
+            finalWidth,
+            finalHeight,
+            puzzleGrid,
+            grid,
+            generatedDifficulty,
+            attempts
+        };
+
+        if (generatedDifficulty == target)
+            return result;
+        else if (puzzleBank[N][generatedDifficulty].size() < MAX_CACHE_SIZE)
+                puzzleBank[N][generatedDifficulty].push_back(result);
+    }
+}
