@@ -22,7 +22,7 @@ struct Point
     }
 };
 
-struct PuzzleResult
+struct puzzleResult
 {
     int finalWidth;
     int finalHeight;
@@ -32,6 +32,6 @@ struct PuzzleResult
     int attempts;
 };
 
-PuzzleResult generateTargetedHidato(int N, Difficulty target);
+puzzleResult generateTargetedHidato(int N, Difficulty target);
 
 #endif

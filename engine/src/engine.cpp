@@ -37,9 +37,126 @@ vector<Point> getNeighbours(int r, int c, int height, int width, const vector<ve
 
             if (isValid(nr, nc, height, width, grid))
                 if (!onlyEmpty || grid[nr][nc] == 0)
-                    neighbors.push_back({nr, nc});
+                    neighbours.push_back({nr, nc});
         }
     }
 
     return neighbours;
 }
+
+vector<vector<int>> generateEmptyGrid(int N, Difficulty target)
+{
+    int canvasSize = N; 
+    vector<vector<int>> canvas(canvasSize, vector<int>(canvasSize, -1));
+    
+    int startR = canvasSize / 2;
+    int startC = canvasSize / 2;
+    canvas[startR][startC] = 0;
+    
+    int cellsAdded = 1;
+    Point currentTip = {startR, startC};
+    vector<Point> allPlayableCells = {currentTip};
+
+    while (cellsAdded < N)
+    {
+        vector<Point> potentialMoves;
+        
+        // EASY : Try to grow from the very last cell added to make a long snake
+        if (target == EASY) {
+            for (int dr = -1; dr <= 1; ++dr) 
+            {
+                for (int dc = -1; dc <= 1; ++dc) 
+                {
+                    int nr = currentTip.r + dr, nc = currentTip.c + dc;
+
+                    if (nr >= 0 && nr < canvasSize && nc >= 0 && nc < canvasSize && canvas[nr][nc] == -1)
+                        potentialMoves.push_back({nr, nc});
+                }
+            }
+        }
+        
+        // HARD/MEDIUM: Pick a completely random playable cell and expand outward
+        if (potentialMoves.empty() || target != EASY) 
+        {
+            shuffle(allPlayableCells.begin(), allPlayableCells.end(), rng);
+
+            for (const auto& cell : allPlayableCells) 
+            {
+                for (int dr = -1; dr <= 1; ++dr) 
+                {
+                    for (int dc = -1; dc <= 1; ++dc) 
+                    {
+                        int nr = cell.r + dr, nc = cell.c + dc;
+
+                        if (nr >= 0 && nr < canvasSize && nc >= 0 && nc < canvasSize && canvas[nr][nc] == -1) 
+                            potentialMoves.push_back({nr, nc});
+                    }
+                }
+
+                if (!potentialMoves.empty() && target != EASY) break; // Found an edge to expand
+            }
+        }
+
+        // Pick a random valid expansion point
+        if (!potentialMoves.empty()) 
+        {
+            Point nextCell = potentialMoves[uniform_int_distribution<int>(0, potentialMoves.size() - 1)(rng)];
+            canvas[nextCell.r][nextCell.c] = 0;
+            currentTip = nextCell;
+            allPlayableCells.push_back(nextCell);
+            cellsAdded++;
+        }
+    }
+
+    // Shrink-wrap the canvas to find the exact bounding box
+    int minR = canvasSize, maxR = 0, minC = canvasSize, maxC = 0;
+
+    for (int r = 0; r < canvasSize; ++r) 
+    {
+        for (int c = 0; c < canvasSize; ++c) 
+        {
+            if (canvas[r][c] == 0) 
+            {
+                minR = min(minR, r); maxR = max(maxR, r);
+                minC = min(minC, c); maxC = max(maxC, c);
+            }
+        }
+    }
+
+    int finalHeight = maxR - minR + 1;
+    int finalWidth = maxC - minC + 1;
+    vector<vector<int>> trimmedGrid(finalHeight, vector<int>(finalWidth, -1));
+
+    for (int r = minR; r <= maxR; ++r) 
+        for (int c = minC; c <= maxC; ++c)
+            trimmedGrid[r - minR][c - minC] = canvas[r][c];
+
+    return trimmedGrid;
+}
+
+int countEmptyNeighbours(int r, int c, int height, int width, const vector<vector<int>>& grid) 
+{
+    return getNeighbours(r, c, height, width, grid, true).size();
+}
+
+bool generatePath(int r, int c, int currentVal, int N, vector<vector<int>>& grid) 
+{
+    grid[r][c] = currentVal;
+    if (currentVal == N) return true; // Path complete!
+
+    int height = grid.size();
+    int width = grid[0].size();
+    auto neighbors = getNeighbours(r, c, height, width, grid, true);
+    
+    // Warnsdorff's Heuristic: Move to the cell with the fewest exits
+    sort(neighbors.begin(), neighbors.end(), [&](const Point& a, const Point& b) {
+        return countEmptyNeighbours(a.r, a.c, height, width, grid) < countEmptyNeighbours(b.r, b.c, height, width, grid);
+    });
+
+    for (const auto& n : neighbors)
+        if (generatePath(n.r, n.c, currentVal + 1, N, grid)) return true;
+
+    grid[r][c] = 0; // Backtrack
+    return false;
+}
+
