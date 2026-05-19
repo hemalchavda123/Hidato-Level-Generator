@@ -160,3 +160,125 @@ bool generatePath(int r, int c, int currentVal, int N, vector<vector<int>>& grid
     return false;
 }
 
+int solveBoard(int currentNum, int prevR, int prevC, vector<vector<int>>& grid, vector<Point>& clues, int limit, int N)
+{
+    if(currentNum > N) return 1;
+
+    int height = grid.size();
+    int width = grid[0].size();
+
+    if(clues[currentNum].r != -1)
+    {
+        if(currentNum > 1 && !isAdjacent(prevR, prevC, clues[currentNum].r, clues[currentNum].c))
+            return 0; // Clue is not adjacent to previous number
+        return solveBoard(currentNum + 1, clues[currentNum].r, clues[currentNum].c, grid, clues, limit, N);
+    }
+    else
+    {
+        int ways = 0;
+
+        if(currentNum == 1) 
+        {
+            for (int r = 0; r < height; r++) 
+            {
+                for (int c = 0; c < width; c++) 
+                {
+                    if (grid[r][c] == 0) 
+                    {
+                        grid[r][c] = 1;
+                        ways += solveBoard(2, r, c, grid, clues, limit, N);
+                        grid[r][c] = 0; 
+                        if (ways > limit) return ways; 
+                    }
+                }
+            }
+        } 
+        else 
+        {
+            for (const auto& n : getNeighbours(prevR, prevC, height, width, grid, true)) 
+            {
+                grid[n.r][n.c] = currentNum;
+                ways += solveBoard(currentNum + 1, n.r, n.c, grid, clues, limit, N);
+                grid[n.r][n.c] = 0;
+                if (ways > limit) return ways; 
+            }
+        }
+
+        return ways;
+    }
+}
+
+int countSolutions(vector<vector<int>>& grid, int N, int limit)
+{
+    int height = grid.size();
+    int width = grid[0].size();
+
+    vector<Point> clues(N + 1, {-1, -1});
+
+    for(int r=0; r<height; r++)
+        for(int c=0; c<width; c++)
+            if(grid[r][c] > 0)
+                clues[grid[r][c]] = {r, c};
+                
+    return solveBoard(1, -1, -1, grid, clues, limit, N);
+}
+
+vector<vector<int>> pruneToUniqueMinimal(const vector<vector<int>>& solvedGrid, int N)
+{
+    vector<vector<int>> puzzle = solvedGrid;
+    int height = puzzle.size();
+    int width = puzzle[0].size();
+
+    vector<Point> cells;
+
+    for (int r = 0; r < height; r++)
+        for (int c = 0; c < width; c++)
+            if (puzzle[r][c] > 0)
+                cells.push_back({r, c});
+
+    shuffle(cells.begin(), cells.end(), rng);
+
+    for (const auto& cell : cells) 
+    {
+        int backup = puzzle[cell.r][cell.c];
+        puzzle[cell.r][cell.c] = 0;
+
+        if (countSolutions(puzzle, 2, N) > 1)
+            puzzle[cell.r][cell.c] = backup; // Restore if not unique
+    }
+    return puzzle;
+}
+
+bool matchesStatisticalProfile(const vector<vector<int>>& puzzle, Difficulty target, int N) 
+{
+    int maxGap = 0, currentGap = 0, totalClues = 0;
+    int height = puzzle.size();
+    int width = puzzle[0].size();
+
+    for(int i=1; i<=N; i++) 
+    {
+        bool found = false;
+
+        for (int r = 0; r < height && !found; r++) 
+            for (int c = 0; c < width && !found; c++) 
+                if (puzzle[r][c] == i) 
+                    found = true;  
+                                
+        if (!found) currentGap++;
+        else 
+        {
+            maxGap = max(maxGap, currentGap);
+            currentGap = 0;
+            totalClues++;
+        }
+    }
+
+    maxGap = max(maxGap, currentGap);
+    double clueDensity = (double)totalClues / N;
+
+    if (target == EASY) return clueDensity > 0.35 && maxGap <= 5;
+    if (target == MEDIUM) return maxGap > 4 && maxGap <= 15;
+    if (target == HARD) return maxGap > 15 || clueDensity < 0.15;
+
+    return false;
+}
