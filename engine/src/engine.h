@@ -59,7 +59,7 @@ private:
     int countEmptyNeighbours(int r, int c, int height, int width, const std::vector<std::vector<int>>& grid) const;
 
     std::vector<std::vector<int>> generateEmptyGrid(int N, Difficulty target);
-    
+
     bool generatePath(int r, int c, int currentVal, int N, std::vector<std::vector<int>>& grid, int& stepCount);
     
     int solveBoard(int currentNum, int prevR, int prevC, std::vector<std::vector<int>>& grid, const std::vector<Point>& clues, const std::vector<int>& nextClueIndex, int limit, int N, int& stepCount);
@@ -70,6 +70,10 @@ private:
     double calculateBranchingFactor(const std::vector<std::vector<int>>& puzzle) const;
     
     bool solveAndCountBacktracks(int currentNum, int prevR, int prevC, std::vector<std::vector<int>>& grid, const std::vector<Point>& clues, int N, int& backtracks);
+
+    int calculateDeepestVoid(const std::vector<std::vector<int>>& puzzle) const;
+
+    int countArticulationPoints(const std::vector<std::vector<int>>& puzzle) const;
     
     Difficulty evaluateDifficulty(const std::vector<std::vector<int>>& puzzle, int N);
 };

@@ -3,6 +3,8 @@
 #include <iomanip>
 #include <algorithm>
 #include <chrono>
+#include <queue>
+#include <functional>
 
 using namespace std;
 
@@ -32,8 +34,12 @@ int HidatoGenerator::getNeighbours(int r, int c, int height, int width, const ve
             int nr = r + dr, nc = c + dc;
 
             if (isValid(nr, nc, height, width, grid))
+            {
                 if (!onlyEmpty || grid[nr][nc] == CELL_EMPTY)
+                {
                     outNeighbours[count++] = {nr, nc};
+                }
+            }
         }
     }
     return count;
@@ -49,7 +55,9 @@ int HidatoGenerator::countEmptyNeighbours(int r, int c, int height, int width, c
             if (dr == 0 && dc == 0) continue;
             int nr = r + dr, nc = c + dc;
             if (nr >= 0 && nr < height && nc >= 0 && nc < width && grid[nr][nc] == CELL_EMPTY)
+            {
                 count++;
+            }
         }
     }
     return count;
@@ -104,7 +112,7 @@ vector<vector<int>> HidatoGenerator::generateEmptyGrid(int N, Difficulty target)
                     }
                 }
 
-                if (!potentialMoves.empty() && target != Difficulty::EASY) break;
+                if (!potentialMoves.empty() && target != Difficulty::EASY) break; // Found an edge to expand
             }
         }
 
@@ -128,10 +136,8 @@ vector<vector<int>> HidatoGenerator::generateEmptyGrid(int N, Difficulty target)
         {
             if (canvas[r][c] == CELL_EMPTY) 
             {
-                minR = min(minR, r); 
-                maxR = max(maxR, r);
-                minC = min(minC, c); 
-                maxC = max(maxC, c);
+                minR = min(minR, r); maxR = max(maxR, r);
+                minC = min(minC, c); maxC = max(maxC, c);
             }
         }
     }
@@ -149,12 +155,10 @@ vector<vector<int>> HidatoGenerator::generateEmptyGrid(int N, Difficulty target)
 
 bool HidatoGenerator::generatePath(int r, int c, int currentVal, int N, vector<vector<int>>& grid, int& stepCount) 
 {
-    // Prevent hanging on pathologically difficult empty grid constraints by aborting early
-    if (++stepCount > 10000)
-        return false; 
+    if (++stepCount > 5000) return false; 
 
     grid[r][c] = currentVal;
-    if (currentVal == N) return true; 
+    if (currentVal == N) return true;
 
     int height = grid.size();
     int width = grid[0].size();
@@ -163,11 +167,11 @@ bool HidatoGenerator::generatePath(int r, int c, int currentVal, int N, vector<v
     int numNeighbors = getNeighbours(r, c, height, width, grid, true, neighborsArr);
     
     pair<Point, int> neighborsWithCounts[8];
-
-    for (int i = 0; i < numNeighbors; ++i)
+    for (int i = 0; i < numNeighbors; ++i) {
         neighborsWithCounts[i] = {neighborsArr[i], countEmptyNeighbours(neighborsArr[i].r, neighborsArr[i].c, height, width, grid)};
+    }
 
-    // Warnsdorff's Heuristic: Move to the cell with the fewest exits
+    // Warnsdorff's Heuristic
     sort(neighborsWithCounts, neighborsWithCounts + numNeighbors, [](const pair<Point, int>& a, const pair<Point, int>& b) {
         return a.second < b.second;
     });
@@ -181,32 +185,26 @@ bool HidatoGenerator::generatePath(int r, int c, int currentVal, int N, vector<v
 
 int HidatoGenerator::solveBoard(int currentNum, int prevR, int prevC, vector<vector<int>>& grid, const vector<Point>& clues, const vector<int>& nextClueIndex, int limit, int N, int& stepCount)
 {
-    // Prevent infinite/too long searches by enforcing a budget limit on recursive steps
-    if (++stepCount > 20000)
-        return limit + 1;
+    if (++stepCount > 20000) return limit + 1;
 
     if(currentNum > N) return 1;
 
     int height = grid.size();
     int width = grid[0].size();
 
-    // Chebyshev distance pruning:
-    // The distance to the next clue must be <= the remaining steps to reach it
+    // Chebyshev distance pruning
     if (currentNum > 1 && prevR != -1) {
         int nextClue = nextClueIndex[currentNum - 1];
-        if (nextClue != -1) 
-        {
+        if (nextClue != -1) {
             int dist = max(abs(prevR - clues[nextClue].r), abs(prevC - clues[nextClue].c));
-
-            if (dist > nextClue - (currentNum - 1))
-                return 0;
+            if (dist > nextClue - (currentNum - 1)) return 0;
         }
     }
 
     if(clues[currentNum].r != -1)
     {
         if(currentNum > 1 && !isAdjacent(prevR, prevC, clues[currentNum].r, clues[currentNum].c))
-            return 0; // Clue is not adjacent to previous number
+            return 0;
         return solveBoard(currentNum + 1, clues[currentNum].r, clues[currentNum].c, grid, clues, nextClueIndex, limit, N, stepCount);
     }
     else
@@ -242,7 +240,6 @@ int HidatoGenerator::solveBoard(int currentNum, int prevR, int prevC, vector<vec
                 if (ways > limit) return ways; 
             }
         }
-
         return ways;
     }
 }
@@ -259,15 +256,11 @@ int HidatoGenerator::countSolutions(vector<vector<int>>& grid, int N, int limit)
             if(grid[r][c] > 0)
                 clues[grid[r][c]] = {r, c};
 
-    // Precompute the next clue index for each number to optimize lookahead
     vector<int> nextClueIndex(N + 1, -1);
     int lastClue = -1;
-    for (int i = N; i >= 1; i--) 
-    {
+    for (int i = N; i >= 1; i--) {
         nextClueIndex[i] = lastClue;
-
-        if (clues[i].r != -1)
-            lastClue = i;
+        if (clues[i].r != -1) lastClue = i;
     }
                 
     int stepCount = 0;
@@ -292,54 +285,30 @@ vector<vector<int>> HidatoGenerator::pruneToUniqueMinimal(const vector<vector<in
     for (const auto& cell : cells) 
     {
         int val = puzzle[cell.r][cell.c];
-        if (val == 1 || val == N) continue;
+        if (val == 1 || val == N) continue; // Keep 1 and N as clues!
         
         puzzle[cell.r][cell.c] = CELL_EMPTY;
 
         if (countSolutions(puzzle, N, 2) > 1)
-            puzzle[cell.r][cell.c] = val; 
+            puzzle[cell.r][cell.c] = val; // Restore if not unique
     }
     return puzzle;
 }
 
-double HidatoGenerator::calculateBranchingFactor(const vector<vector<int>>& puzzle) const 
-{
-    int emptyCells = 0;
-    int totalBranches = 0;
-    int height = puzzle.size();
-    int width = puzzle[0].size();
-
-    for (int r = 0; r < height; r++) 
-    {
-        for (int c = 0; c < width; c++) 
-        {
-            if (puzzle[r][c] == CELL_EMPTY) 
-            {
-                emptyCells++;
-                Point neighborsArr[8];
-                // Count ALL playable neighbors (empty + clues), not just empty ones
-                totalBranches += getNeighbours(r, c, height, width, puzzle, false, neighborsArr); 
-            }
-        }
-    }
-
-    if (emptyCells == 0) return 0.0;
-    return static_cast<double>(totalBranches) / emptyCells;
-}
+// --- NEW GRADING ENGINE ALGORITHMS ---
 
 bool HidatoGenerator::solveAndCountBacktracks(int currentNum, int prevR, int prevC, vector<vector<int>>& grid, const vector<Point>& clues, int N, int& backtracks) 
 {
-    if (currentNum > N) return true; // Solved
+    if (currentNum > N) return true; 
 
     int height = grid.size();
     int width = grid[0].size();
 
-    // If a clue is forced here
     if (clues[currentNum].r != -1) 
     {
         if (currentNum > 1 && !isAdjacent(prevR, prevC, clues[currentNum].r, clues[currentNum].c)) 
         {
-            backtracks++; // Hit a wall!
+            backtracks++; 
             return false;
         }
         return solveAndCountBacktracks(currentNum + 1, clues[currentNum].r, clues[currentNum].c, grid, clues, N, backtracks);
@@ -348,29 +317,126 @@ bool HidatoGenerator::solveAndCountBacktracks(int currentNum, int prevR, int pre
     Point neighborsArr[8];
     int numNeighbors = getNeighbours(prevR, prevC, height, width, grid, true, neighborsArr);
 
-    // Sort neighbors by fewest exits (Warnsdorff's Heuristic)
     vector<pair<Point, int>> rankedNeighbors;
     for (int i = 0; i < numNeighbors; ++i) 
     {
         int exits = countEmptyNeighbours(neighborsArr[i].r, neighborsArr[i].c, height, width, grid);
         rankedNeighbors.push_back({neighborsArr[i], exits});
     }
+    
+    // Warnsdorff's Heuristic
     sort(rankedNeighbors.begin(), rankedNeighbors.end(), [](const pair<Point, int>& a, const pair<Point, int>& b) {
-        return a.second < b.second; // Fewest exits first
+        return a.second < b.second; 
     });
 
-    // Try placing numbers
     for (const auto& n : rankedNeighbors) 
     {
         grid[n.first.r][n.first.c] = currentNum;
         if (solveAndCountBacktracks(currentNum + 1, n.first.r, n.first.c, grid, clues, N, backtracks)) 
             return true; 
             
-        grid[n.first.r][n.first.c] = CELL_EMPTY; // Backtrack undo
+        grid[n.first.r][n.first.c] = CELL_EMPTY; 
     }
 
-    backtracks++; // All paths from this cell failed
+    backtracks++; 
     return false;
+}
+
+int HidatoGenerator::calculateDeepestVoid(const vector<vector<int>>& puzzle) const 
+{
+    int height = puzzle.size();
+    int width = puzzle[0].size();
+    vector<vector<int>> dist(height, vector<int>(width, -1));
+    queue<pair<Point, int>> q;
+
+    for (int r = 0; r < height; r++) {
+        for (int c = 0; c < width; c++) {
+            if (puzzle[r][c] > 0) {
+                q.push({{r, c}, 0});
+                dist[r][c] = 0;
+            } else if (puzzle[r][c] == CELL_OBSTACLE) {
+                dist[r][c] = -2; 
+            }
+        }
+    }
+
+    int maxDepth = 0;
+    while (!q.empty()) 
+    {
+        auto front = q.front();
+        q.pop();
+        Point pt = front.first;
+        int d = front.second;
+        maxDepth = max(maxDepth, d);
+
+        Point neighborsArr[8];
+        int numNeighbors = getNeighbours(pt.r, pt.c, height, width, puzzle, true, neighborsArr);
+        
+        for (int i = 0; i < numNeighbors; i++) {
+            int nr = neighborsArr[i].r;
+            int nc = neighborsArr[i].c;
+            if (dist[nr][nc] == -1) { 
+                dist[nr][nc] = d + 1;
+                q.push(std::make_pair(Point{nr, nc}, d + 1));
+            }
+        }
+    }
+    return maxDepth;
+}
+
+int HidatoGenerator::countArticulationPoints(const vector<vector<int>>& puzzle) const 
+{
+    int height = puzzle.size();
+    int width = puzzle[0].size();
+    vector<vector<int>> disc(height, vector<int>(width, -1));
+    vector<vector<int>> low(height, vector<int>(width, -1));
+    vector<vector<bool>> ap(height, vector<bool>(width, false));
+    int time = 0;
+
+    std::function<void(int, int, int, int)> dfs = [&](int r, int c, int pr, int pc) {
+        int children = 0;
+        disc[r][c] = low[r][c] = ++time;
+
+        Point neighborsArr[8];
+        int numNeighbors = getNeighbours(r, c, height, width, puzzle, false, neighborsArr);
+
+        for(int i = 0; i < numNeighbors; i++) {
+            int nr = neighborsArr[i].r;
+            int nc = neighborsArr[i].c;
+            
+            if (puzzle[nr][nc] == CELL_OBSTACLE) continue;
+
+            if (disc[nr][nc] == -1) {
+                children++;
+                dfs(nr, nc, r, c);
+                low[r][c] = min(low[r][c], low[nr][nc]);
+
+                if (pr != -1 && low[nr][nc] >= disc[r][c]) {
+                    ap[r][c] = true;
+                }
+            } else if (nr != pr || nc != pc) {
+                low[r][c] = min(low[r][c], disc[nr][nc]);
+            }
+        }
+        if (pr == -1 && children > 1) {
+            ap[r][c] = true;
+        }
+    };
+
+    for (int r = 0; r < height; r++) {
+        for (int c = 0; c < width; c++) {
+            if (puzzle[r][c] != CELL_OBSTACLE && disc[r][c] == -1) {
+                dfs(r, c, -1, -1);
+            }
+        }
+    }
+
+    int count = 0;
+    for (int r = 0; r < height; r++)
+        for (int c = 0; c < width; c++)
+            if (ap[r][c]) count++;
+
+    return count;
 }
 
 Difficulty HidatoGenerator::evaluateDifficulty(const vector<vector<int>>& puzzle, int N) 
@@ -379,6 +445,7 @@ Difficulty HidatoGenerator::evaluateDifficulty(const vector<vector<int>>& puzzle
     int width = puzzle[0].size();
 
     vector<Point> clues(N + 1, {-1, -1});
+
     for(int r = 0; r < height; r++)
         for(int c = 0; c < width; c++)
             if(puzzle[r][c] > 0)
@@ -387,7 +454,10 @@ Difficulty HidatoGenerator::evaluateDifficulty(const vector<vector<int>>& puzzle
     int maxGap = 0, currentGap = 0;
     for(int i = 1; i <= N; i++) 
     {
-        if (clues[i].r == -1) currentGap++;
+        if (clues[i].r == -1) 
+        {
+            currentGap++;
+        }
         else 
         {
             maxGap = max(maxGap, currentGap);
@@ -396,24 +466,27 @@ Difficulty HidatoGenerator::evaluateDifficulty(const vector<vector<int>>& puzzle
     }
     maxGap = max(maxGap, currentGap);
 
-    double branchFactor = calculateBranchingFactor(puzzle);
+    int voidDepth = calculateDeepestVoid(puzzle);
+
+    int chokePoints = countArticulationPoints(puzzle);
 
     vector<vector<int>> testGrid = puzzle;
     int backtracks = 0;
-
     solveAndCountBacktracks(2, clues[1].r, clues[1].c, testGrid, clues, N, backtracks);
 
-    double score = 0.0;
-
-    score += (maxGap * (branchFactor - 1.5)); 
+    double spatialDifficulty = (maxGap * (voidDepth * 0.8));
+    double chokeDampener = 1.0 + (chokePoints * 0.2);
+    double score = (spatialDifficulty / chokeDampener);
 
     score += (backtracks * 2.5);
 
-    double mediumThreshold = (N < 25) ? 15.0 : 35.0;
-    double hardThreshold   = (N < 25) ? 40.0 : 85.0;
+    double normalizedScore = score / static_cast<double>(N);
 
-    if (score < mediumThreshold) return Difficulty::EASY;
-    if (score < hardThreshold)   return Difficulty::MEDIUM;
+    constexpr double MEDIUM_THRESHOLD = 1.2;
+    constexpr double HARD_THRESHOLD   = 2.5;
+
+    if (normalizedScore < MEDIUM_THRESHOLD) return Difficulty::EASY;
+    if (normalizedScore < HARD_THRESHOLD)   return Difficulty::MEDIUM;
     return Difficulty::HARD;
 }
 
@@ -423,7 +496,6 @@ PuzzleResult HidatoGenerator::generateTargetedHidato(int N, Difficulty target)
     {
         PuzzleResult cachedPuzzle = puzzleBank[N][target].back();
         puzzleBank[N][target].pop_back();
-
         return cachedPuzzle;
     }
 
@@ -450,6 +522,7 @@ PuzzleResult HidatoGenerator::generateTargetedHidato(int N, Difficulty target)
 
         vector<vector<int>> puzzleGrid = pruneToUniqueMinimal(grid, N);
 
+        // Uses the new unified mathematical/heuristic evaluator
         Difficulty generatedDifficulty = evaluateDifficulty(puzzleGrid, N);
 
         PuzzleResult result = 
@@ -475,9 +548,9 @@ void HidatoGenerator::printGrid(const vector<vector<int>>& grid)
     {
         for (int val : row) 
         {
-            if (val == CELL_OBSTACLE) cout << " ## ";
-            else if (val == CELL_EMPTY) cout << "  . ";
-            else cout << setw(3) << val << " ";
+            if (val == CELL_OBSTACLE) cout << " ## "; 
+            else if (val == CELL_EMPTY) cout << "  . "; 
+            else cout << setw(3) << val << " "; 
         }
         cout << "\n";
     }
